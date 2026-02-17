@@ -1,0 +1,238 @@
+# 📦 CabbageBaggage: The Ultimate Home Lab Guide (2026)
+
+This guide documents the transition from a basic OMV setup to a professional, domain-secured AI, Cloud, and Network infrastructure.
+
+---
+
+## 🛠️ Chapter 1: Hardware & Base System
+* **Host:** 2014 Desktop PC, Intel i3-4330 @ 3,50 GHz | 8GB RAM | 250GB SSD
+* **OS:** OpenMediaVault (OMV) 8.
+* **Storage:** External HDD/SSD for data, formatted as `ext4`.
+* **Networking:** TP-Link Deco Mesh System (Static IP for Server: `192.168.68.62`).
+
+---
+
+## 💾 Chapter 2: OMV Setup & Extensions
+Before deploying containers, we need to prepare the environment.
+
+### 2.1 Installing OMV-Extras & Docker
+1. **Run the install script via SSH:**
+   ```bash
+   wget -O - https://github.com/OpenMediaVault-Plugin-Developers/installScript/raw/master/install | sudo bash
+   ```
+2. **Enable Plugins:** In the OMV WebUI, go to **System > Plugins** and install `openmediavault-compose`.
+3. **Set Directory Permissions:** To prevent persistence issues, ensure the Docker user has ownership:
+   ```bash
+   # Replace YOUR_UUID with your actual disk UUID
+   sudo chown -R 1000:1000 /srv/dev-disk-by-uuid-YOUR_UUID/appdata
+   sudo chmod -R 775 /srv/dev-disk-by-uuid-YOUR_UUID/appdata
+   ```
+
+---
+
+## 🚀 Chapter 3: Docker Services Configuration
+Each service is deployed via **Services > Compose > Files** in OMV. All services share a common network: `cabbage-net`.
+
+### 3.1 Nginx Proxy Manager (NPM)
+The \"Traffic Controller\" for SSL and subdomains.
+```yaml
+services:
+  npm:
+    image: 'jc21/nginx-proxy-manager:latest'
+    container_name: nginx-proxy-manager
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '81:81'
+      - '443:443'
+    volumes:
+      - /srv/dev-disk-by-uuid-YOUR_UUID/appdata/npm/data:/data
+      - /srv/dev-disk-by-uuid-YOUR_UUID/appdata/npm/letsencrypt:/etc/letsencrypt
+    networks:
+      - cabbage-net
+
+networks:
+  cabbage-net:
+    driver: bridge
+```
+
+---
+
+### 3.2 Nextcloud & MariaDB
+Your private cloud for files, contacts, and calendars.
+```yaml
+services:
+  nextcloud-db:
+    image: mariadb:10.11
+    container_name: nextcloud-db
+    restart: unless-stopped
+    command: --transaction-isolation=READ-COMMITTED --binlog-format=ROW
+    volumes:
+      - /srv/dev-disk-by-uuid-YOUR_UUID/appdata/nextcloud/db:/var/lib/mysql
+    environment:
+      - MARIADB_ROOT_PASSWORD=YOUR_DB_ROOT_PASSWORD
+      - MARIADB_PASSWORD=YOUR_DB_PASSWORD
+      - MARIADB_DATABASE=nextcloud
+      - MARIADB_USER=nextcloud
+    networks:
+      - cabbage-net
+
+  nextcloud:
+    image: nextcloud:latest
+    container_name: nextcloud
+    restart: unless-stopped
+    ports:
+      - '8080:80'
+    depends_on:
+      - nextcloud-db
+    volumes:
+      - /srv/dev-disk-by-uuid-YOUR_UUID/appdata/nextcloud/data:/var/www/html
+    environment:
+      - MYSQL_PASSWORD=YOUR_DB_PASSWORD
+      - MYSQL_DATABASE=nextcloud
+      - MYSQL_USER=nextcloud
+      - MYSQL_HOST=nextcloud-db
+    networks:
+      - cabbage-net
+```
+
+---
+
+### 3.3 Pi-hole
+Network-wide ad-blocking and DNS management.
+```yaml
+services:
+  pihole:
+    container_name: pihole
+    image: pihole/pihole:latest
+    restart: unless-stopped
+    ports:
+      - "53:53/tcp"
+      - "53:53/udp"
+      - "8081:80" # Web UI moved to 8081 because NPM uses 80
+    environment:
+      - TZ=Europe/Berlin
+      - WEBPASSWORD=YOUR_ADMIN_PASSWORD
+    volumes:
+      - /srv/dev-disk-by-uuid-YOUR_UUID/appdata/pihole/config:/etc/pihole
+      - /srv/dev-disk-by-uuid-YOUR_UUID/appdata/pihole/dnsmasq:/etc/dnsmasq.d
+    networks:
+      - cabbage-net
+```
+
+---
+
+### 3.4 Vaultwarden
+Your private, self-hosted password manager.
+```yaml
+services:
+  vaultwarden:
+    image: vaultwarden/server:latest
+    container_name: vaultwarden
+    restart: unless-stopped
+    environment:
+      - SIGNUPS_ALLOWED=true # Set to false after creating your account
+    volumes:
+      - /srv/dev-disk-by-uuid-YOUR_UUID/appdata/vaultwarden:/data
+    networks:
+      - cabbage-net
+```
+
+---
+
+### 3.5 Ollama (AI Backend)
+Handles the local execution of Large Language Models.
+```yaml
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    volumes:
+      - /srv/dev-disk-by-uuid-YOUR_UUID/appdata/ollama:/root/.ollama
+    networks:
+      - cabbage-net
+```
+
+---
+
+### 3.6 Open WebUI (AI Frontend)
+The user interface for your local AI.
+```yaml
+services:
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    restart: unless-stopped
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - WEBUI_SECRET_KEY=YOUR_SECURE_RANDOM_STRING
+    volumes:
+      - /srv/dev-disk-by-uuid-YOUR_UUID/appdata/open-webui:/app/data
+    networks:
+      - cabbage-net
+```
+
+---
+
+### 3.7 Cloudflare DDNS
+Updates your home IP address automatically for your domain.
+```yaml
+services:
+  cloudflare-ddns:
+    image: oznu/cloudflare-ddns:latest
+    container_name: cloudflare-ddns
+    restart: unless-stopped
+    environment:
+      - API_KEY=YOUR_CLOUDFLARE_API_TOKEN
+      - ZONE=cabbagebaggage.net
+      - PROXIED=true
+    networks:
+      - cabbage-net
+```
+
+---
+
+## 🌐 Chapter 4: Domain & Networking Setup
+
+### 4.1 Cloudflare DNS
+1. **Nameservers:** Point your GoDaddy domain nameservers to Cloudflare.
+2. **A-Record:** Create a record for `@` pointing to `1.1.1.1` (proxied).
+3. **CNAMEs:** Create records for `ai`, `cloud`, `pass`, and `pihole` pointing to `@`.
+
+### 4.2 Deco Router Settings (NAT Forwarding)
+Forward the following ports to your ThinkPad (`192.168.68.62`):
+* **External 80** -> **Internal 80**
+* **External 443** -> **Internal 443**
+
+---
+
+## 🛡️ Chapter 5: Security & Subdomains (NPM)
+1. **SSL Certificate:** Add a \"Let's Encrypt\" certificate using **DNS Challenge** (Cloudflare) for `*.cabbagebaggage.net`.
+2. **Proxy Hosts:**
+   * `ai.cabbagebaggage.net` -> `open-webui:8080`
+   * `cloud.cabbagebaggage.net` -> `nextcloud:80`
+   * `pass.cabbagebaggage.net` -> `vaultwarden:80`
+   * `pihole.cabbagebaggage.net` -> `pihole:80`
+
+---
+
+## 🧠 Chapter 6: AI Automation & Multi-User RAG
+
+### 6.1 Automating Embeddings
+Pull the embedding model manually to enable Document Search (RAG):
+```bash
+docker exec -it ollama ollama pull mxbai-embed-large
+```
+In Open WebUI **Settings > Documents**, select `mxbai-embed-large` as the \"Embedding Model\".
+
+### 6.2 Nextcloud Assistant
+Connect the Nextcloud Assistant app to your Ollama API (`http://ollama:11434`). This allows each user to chat with their own files privately.
+
+---
+
+## 🖨️ Chapter 7: Troubleshooting (The Printer Ghost)
+If your HP LaserJet prints garbled text:
+1. Access the printer's Web Interface via its IP.
+2. Disable **SNMP**, **WSD**, and **LPD** services.
+3. This stops random network discovery scans from being interpreted as print jobs.
