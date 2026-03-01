@@ -196,6 +196,11 @@ services:
       - PGID=100 # Meistens 'users' Gruppe in OMV
       - TZ=Europe/Berlin
       - DOCKER_MODS=linuxserver/mods:universal-package-install # Optional für Zusatzpakete
+      # --- ABSICHERUNG START ---
+      - CUSTOM_USER=dein_name        # Dein gewünschter Benutzername
+      - PASSWORD=dein_starkes_pw     # Dein Passwort für den Web-Login
+      - AUTH_CONFIG=                 # Leer lassen, um Standard-Auth zu erzwingen
+      # --- ABSICHERUNG ENDE ---
     volumes:
       - /sharedfolders/AppData/obsidian/config:/config
       - /sharedfolders/AppData/obsidian/vaults:/vaults
