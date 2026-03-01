@@ -37,23 +37,15 @@ Each service is deployed via **Services > Compose > Files** in OMV. All services
 The \"Traffic Controller\" for SSL and subdomains.
 ```yaml
 services:
-  npm:
-    image: 'jc21/nginx-proxy-manager:latest'
-    container_name: nginx-proxy-manager
+  landingpage:
+    image: nginx:stable-alpine
+    container_name: landingpage-service
     restart: unless-stopped
     ports:
-      - '80:80'
-      - '81:81'
-      - '443:443'
+      - "3000:80"  # Deine Seite ist dann über Port 8080 erreichbar
     volumes:
-      - /srv/dev-disk-by-uuid-YOUR_UUID/appdata/npm/data:/data
-      - /srv/dev-disk-by-uuid-YOUR_UUID/appdata/npm/letsencrypt:/etc/letsencrypt
-    networks:
-      - cabbage-net
-
-networks:
-  cabbage-net:
-    driver: bridge
+      # Ersetze den Pfad links vom Doppelpunkt durch deinen absoluten OMV-Pfad
+      - /www:/usr/share/nginx/html:ro
 ```
 
 ---
@@ -63,37 +55,35 @@ Your private cloud for files, contacts, and calendars.
 ```yaml
 services:
   nextcloud-db:
-    image: mariadb:10.11
-    container_name: nextcloud-db
-    restart: unless-stopped
+    image: mariadb:10.6
+    restart: always
     command: --transaction-isolation=READ-COMMITTED --binlog-format=ROW
     volumes:
-      - /srv/dev-disk-by-uuid-YOUR_UUID/appdata/nextcloud/db:/var/lib/mysql
+      - /nextcloud/nextcloud_db:/var/lib/mysql
     environment:
-      - MARIADB_ROOT_PASSWORD=YOUR_DB_ROOT_PASSWORD
-      - MARIADB_PASSWORD=YOUR_DB_PASSWORD
-      - MARIADB_DATABASE=nextcloud
-      - MARIADB_USER=nextcloud
-    networks:
-      - cabbage-net
+      - MYSQL_ROOT_PASSWORD=secure_mysqlroot_password
+      - MYSQL_PASSWORD=secure_mysql_password
+      - MYSQL_DATABASE=nextcloud
+      - MYSQL_USER=nextcloud
 
-  nextcloud:
+  nextcloud-app:
     image: nextcloud:latest
-    container_name: nextcloud
-    restart: unless-stopped
+    restart: always
     ports:
-      - '8080:80'
+      - 8080:80
     depends_on:
       - nextcloud-db
     volumes:
-      - /srv/dev-disk-by-uuid-YOUR_UUID/appdata/nextcloud/data:/var/www/html
+      - /nextcloud/nextcloud_config:/var/www/html
+      - /nextcloud/nextcloud_data:/var/www/html/data
     environment:
-      - MYSQL_PASSWORD=YOUR_DB_PASSWORD
+      - MYSQL_HOST=nextcloud-db
       - MYSQL_DATABASE=nextcloud
       - MYSQL_USER=nextcloud
-      - MYSQL_HOST=nextcloud-db
-    networks:
-      - cabbage-net
+      - MYSQL_PASSWORD=secure_mysql_password
+      - NEXTCLOUD_ADMIN_USER=admin
+      - NEXTCLOUD_ADMIN_PASSWORD=secure_admin_password
+      - NEXTCLOUD_TRUSTED_DOMAINS=cloud.lkohl.duckdns.org 192.168.68.62
 ```
 
 ---
@@ -105,19 +95,20 @@ services:
   pihole:
     container_name: pihole
     image: pihole/pihole:latest
-    restart: unless-stopped
     ports:
       - "53:53/tcp"
       - "53:53/udp"
-      - "8081:80" # Web UI moved to 8081 because NPM uses 80
+      - "8083:80/tcp" # Web-Oberfläche auf Port 8083
     environment:
-      - TZ=Europe/Berlin
-      - WEBPASSWORD=YOUR_ADMIN_PASSWORD
+      TZ: 'Europe/Berlin'
+      WEBPASSWORD: 'lJ2&0Zk6Chv4IPi!' # Passwort für das Pi-hole Admin Panel
+      FTLCONF_LOCAL_IPV4: '192.168.68.62'
     volumes:
-      - /srv/dev-disk-by-uuid-YOUR_UUID/appdata/pihole/config:/etc/pihole
-      - /srv/dev-disk-by-uuid-YOUR_UUID/appdata/pihole/dnsmasq:/etc/dnsmasq.d
-    networks:
-      - cabbage-net
+      - '/srv/dev-disk-by-uuid-lkohl/appdata/pihole/config:/etc/pihole'
+      - '/srv/dev-disk-by-uuid-lkohl/appdata/pihole/dnsmasq.d:/etc/dnsmasq.d'
+    cap_add:
+      - NET_ADMIN # Erforderlich für DHCP und Netzwerk-Manipulation
+    restart: unless-stopped
 ```
 
 ---
@@ -129,13 +120,13 @@ services:
   vaultwarden:
     image: vaultwarden/server:latest
     container_name: vaultwarden
-    restart: unless-stopped
+    restart: always
     environment:
-      - SIGNUPS_ALLOWED=true # Set to false after creating your account
+      - SIGNUPS_ALLOWED=false   # Sobald dein Account erstellt ist, auf 'false' setzen!
     volumes:
-      - /srv/dev-disk-by-uuid-YOUR_UUID/appdata/vaultwarden:/data
-    networks:
-      - cabbage-net
+      - /vaultwarden/:/data    # Hier wird dein Pfad auf /dev/sda1 genutzt
+    ports:
+      - 8081:80
 ```
 
 ---
@@ -149,14 +140,14 @@ services:
     container_name: ollama
     restart: unless-stopped
     volumes:
-      - /srv/dev-disk-by-uuid-YOUR_UUID/appdata/ollama:/root/.ollama
-    networks:
-      - cabbage-net
+      - /srv/dev-disk-by-uuid-lkohl/appdata/ollama:/root/.ollama
+    ports:
+      - "11434:11434"
 ```
 
 ---
 
-### 3.6 Open WebUI (AI Frontend)
+### 3.6 Open WebUI (AI Frontend) 
 The user interface for your local AI.
 ```yaml
 services:
@@ -164,13 +155,15 @@ services:
     image: ghcr.io/open-webui/open-webui:main
     container_name: open-webui
     restart: unless-stopped
+    ports:
+      - "3001:8080" # Web-Oberfläche auf Port 3001
     environment:
-      - OLLAMA_BASE_URL=http://ollama:11434
-      - WEBUI_SECRET_KEY=YOUR_SECURE_RANDOM_STRING
+      - OLLAMA_BASE_URL=http://ollama:11434/
     volumes:
-      - /srv/dev-disk-by-uuid-YOUR_UUID/appdata/open-webui:/app/data
-    networks:
-      - cabbage-net
+      - /srv/dev-disk-by-uuid-lkohl/appdata/open-webui:/app/data
+      - /nextcloud/nextcloud_data/'Linus Kohl'/files:/app/nextcloud_files:ro
+    depends_on:
+      - ollama
 ```
 
 ---
@@ -184,13 +177,33 @@ services:
     container_name: cloudflare-ddns
     restart: unless-stopped
     environment:
-      - API_KEY=YOUR_CLOUDFLARE_API_TOKEN
+      - API_KEY=l1E6SGvNXt0w1NVIh87mNJICFJpHx4wg5SKXHT3B
       - ZONE=cabbagebaggage.net
-      - PROXIED=true
-    networks:
-      - cabbage-net
+      - PROXIED=true # Das aktiviert den Cloudflare-Schutz (orange Wolke)
 ```
+---
 
+### 3.8 Obsidian
+My personal note server
+```yaml
+services:
+  obsidian:
+    image: lscr.io/linuxserver/obsidian:latest
+    container_name: obsidian
+    privileged: true # Oft nötig für die Fuse-Dateisystem-Interaktionen von Obsidian
+    environment:
+      - PUID=1000 # Ersetze dies durch die ID deines OMV-Nutzers
+      - PGID=100 # Meistens 'users' Gruppe in OMV
+      - TZ=Europe/Berlin
+      - DOCKER_MODS=linuxserver/mods:universal-package-install # Optional für Zusatzpakete
+    volumes:
+      - /sharedfolders/AppData/obsidian/config:/config
+      - /sharedfolders/AppData/obsidian/vaults:/vaults
+    ports:
+      - 3002:3000 # HTTP Web-Interface (KasmVNC)
+      - 3003:3001 # HTTPS Web-Interface
+    restart: unless-stopped
+```
 ---
 
 ## 🌐 Chapter 4: Domain & Networking Setup
