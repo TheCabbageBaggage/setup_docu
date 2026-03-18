@@ -190,9 +190,40 @@ services:
     networks:
       - cabbage-net
 ```
+### 3.8 OpenClaw
+Updates your home IP address automatically for your domain.
+```yaml
+version: '3.8'
 
+services:
+  openclaw:
+    image: ghcr.io/openclaw/openclaw:latest # Oder das entsprechende offizielle Image
+    container_name: openclaw-app
+    restart: always
+    ports:
+      - "127.0.0.1:3000:3033" # WICHTIG: Nur lokal binden, Nginx übernimmt das Internet
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://claw_user:claw_password@db:5432/openclaw
+      - BACKEND_URL=https://claw.lkohl.duckdns.org
+    depends_on:
+      - db
+
+  db:
+    image: postgres:15-alpine
+    container_name: openclaw-db
+    restart: always
+    environment:
+      - POSTGRES_USER=claw_user
+      - POSTGRES_PASSWORD=claw_password
+      - POSTGRES_DB=openclaw
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
 ---
-
+```
 ## 🌐 Chapter 4: Domain & Networking Setup
 
 ### 4.1 Cloudflare DNS
