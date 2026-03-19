@@ -252,7 +252,7 @@ Forward the following ports to your ThinkPad (`192.168.68.62`):
 1. **SSL Certificate:** Add a \"Let's Encrypt\" certificate using **DNS Challenge** (Cloudflare) for `*.cabbagebaggage.net`.
 2. **Proxy Hosts:**
    * `ai.cabbagebaggage.net` -> `open-webui:8080`
-   * `cloud.cabbagebaggage.net` -> `nextcloud:80`
+   * `cloud.cabbagebaggage.net` -> `nextcloud:
    * `pass.cabbagebaggage.net` -> `vaultwarden:80`
    * `pihole.cabbagebaggage.net` -> `pihole:80`
 
