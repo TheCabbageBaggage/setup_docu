@@ -191,37 +191,47 @@ services:
       - cabbage-net
 ```
 ### 3.8 OpenClaw
-Updates your home IP address automatically for your domain.
+Runs OpenClaw on your private data
 ```yaml
 version: '3.8'
 
 services:
   openclaw:
-    image: ghcr.io/openclaw/openclaw:latest # Oder das entsprechende offizielle Image
+    image: ghcr.io/openclaw/openclaw:latest
     container_name: openclaw-app
     restart: always
-    ports:
-      - "127.0.0.1:3000:3033" # WICHTIG: Nur lokal binden, Nginx übernimmt das Internet
+    network_mode: "host"
     environment:
       - NODE_ENV=production
-      - DATABASE_URL=postgresql://claw_user:claw_password@db:5432/openclaw
-      - BACKEND_URL=https://claw.lkohl.duckdns.org
+      - DATABASE_URL=postgresql://claw_user:claw_password@127.0.0.1:5432/openclaw
+      # Wir nutzen hier die lokale IP statt der Domain
+      - BACKEND_URL=http://192.168.68.62:3005 
+    volumes:
+      - /sharedfolders/AppData/openclaw/config:/home/node/.openclaw
+
+  # Das Socat-Relay macht die App im LAN/WLAN unter Port 3005 sichtbar
+  relay:
+    image: alpine/socat
+    container_name: openclaw-relay
+    restart: always
+    network_mode: "host"
+    # Lauscht auf ALLEN lokalen Schnittstellen am Port 3005
+    command: tcp-listen:3005,fork,reuseaddr tcp-connect:127.0.0.1:18789
     depends_on:
-      - db
+      - openclaw
 
   db:
     image: postgres:15-alpine
     container_name: openclaw-db
     restart: always
+    ports:
+      - "5432:5432"
     environment:
       - POSTGRES_USER=claw_user
       - POSTGRES_PASSWORD=claw_password
       - POSTGRES_DB=openclaw
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-
-volumes:
-  postgres_data:
+      - /sharedfolders/AppData/openclaw/db:/var/lib/postgresql/data
 ---
 ```
 ## 🌐 Chapter 4: Domain & Networking Setup
