@@ -149,9 +149,9 @@ services:
     container_name: ollama
     restart: unless-stopped
     volumes:
-      - /srv/dev-disk-by-uuid-YOUR_UUID/appdata/ollama:/root/.ollama
-    networks:
-      - cabbage-net
+      - /srv/dev-disk-by-uuid-lkohl/appdata/ollama:/root/.ollama
+    ports:
+      - "11434:11434"
 ```
 
 ---
@@ -159,19 +159,19 @@ services:
 ### 3.6 Open WebUI (AI Frontend)
 The user interface for your local AI.
 ```yaml
-services:
   open-webui:
     image: ghcr.io/open-webui/open-webui:main
     container_name: open-webui
     restart: unless-stopped
+    ports:
+      - "3001:8080" # Web-Oberfläche auf Port 3001
     environment:
-      - OLLAMA_BASE_URL=http://ollama:11434
-      - WEBUI_SECRET_KEY=YOUR_SECURE_RANDOM_STRING
+      - OLLAMA_BASE_URL=http://ollama:11434/
     volumes:
-      - /srv/dev-disk-by-uuid-YOUR_UUID/appdata/open-webui:/app/data
-    networks:
-      - cabbage-net
-```
+      - /srv/dev-disk-by-uuid-lkohl/appdata/open-webui:/app/data
+      - /nextcloud/nextcloud_data/'Linus Kohl'/files:/app/nextcloud_files:ro
+    depends_on:
+      - ollama
 
 ---
 
