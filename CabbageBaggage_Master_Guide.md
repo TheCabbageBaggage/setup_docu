@@ -155,10 +155,79 @@ services:
 ```
 
 ---
-
 ### 3.6 Open WebUI (AI Frontend)
-The user interface for your local AI.
+Handles the local execution of Large Language Models.
+```yaml
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    volumes:
+      - /srv/dev-disk-by-uuid-lkohl/appdata/ollama:/root/.ollama
+    ports:
+      - "11434:11434"
+
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    restart: unless-stopped
+    ports:
+      - "3001:8080" # Web-Oberfläche auf Port 3001
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434/
+    volumes:
+      - /srv/dev-disk-by-uuid-lkohl/appdata/open-webui:/app/data
+      - /nextcloud/nextcloud_data/'Linus Kohl'/files:/app/nextcloud_files:ro
+    depends_on:
+      - ollama
 ```
+---
+### 3.67 Obsidian
+```
+services:
+  obsidian:
+    image: lscr.io/linuxserver/obsidian:latest
+    container_name: obsidian
+    privileged: true # Oft nötig für die Fuse-Dateisystem-Interaktionen von Obsidian
+    environment:
+      - PUID=1000 # Ersetze dies durch die ID deines OMV-Nutzers
+      - PGID=100 # Meistens 'users' Gruppe in OMV
+      - TZ=Europe/Berlin
+      - DOCKER_MODS=linuxserver/mods:universal-package-install # Optional für Zusatzpakete
+      # --- ABSICHERUNG START ---
+      - CUSTOM_USER=lkohl        # Dein gewünschter Benutzername
+      - PASSWORD=test2026 # Dein Passwort für den Web-Login
+      #- PASSWORD=ZMr45e@!S8basI$c # Dein Passwort für den Web-Login
+      - AUTH_CONFIG=                 # Leer lassen, um Standard-Auth zu erzwingen
+      # --- ABSICHERUNG ENDE ---
+    volumes:
+      - /sharedfolders/AppData/obsidian/config:/config
+      - /sharedfolders/AppData/obsidian/vaults:/vaults
+    ports:
+      - 3002:3000 # HTTP Web-Interface (KasmVNC)
+      - 3003:3001 # HTTPS Web-Interface
+    restart: unless-stopped
+```
+
+### 3.78 Cloudflare DDNS
+Updates your home IP address automatically for your domain.
+```yaml
+services:
+  cloudflare-ddns:
+    image: oznu/cloudflare-ddns:latest
+    container_name: cloudflare-ddns
+    restart: unless-stopped
+    environment:
+      - API_KEY=YOUR_CLOUDFLARE_API_TOKEN
+      - ZONE=cabbagebaggage.net
+      - PROXIED=true
+    networks:
+      - cabbage-net
+```
+### 3.9 OpenClaw
+Runs OpenClaw on your private data
+```yaml
 # OpenClaw — Docker Compose Configuration
 # Part of CabbageBaggage Homelab Stack
 # Full setup guide: see openclaw_setup_guide.md
@@ -212,65 +281,6 @@ services:
 # - Dashboard: http://192.168.68.62:18789  (or via SSH tunnel for HTTPS requirement)
 # - Telegram bot: @clowie_claw_bot
 # - Ollama URL (set via CLI): http://192.168.68.62:11434
-```
-
-### 3.7 Cloudflare DDNS
-Updates your home IP address automatically for your domain.
-```yaml
-services:
-  cloudflare-ddns:
-    image: oznu/cloudflare-ddns:latest
-    container_name: cloudflare-ddns
-    restart: unless-stopped
-    environment:
-      - API_KEY=YOUR_CLOUDFLARE_API_TOKEN
-      - ZONE=cabbagebaggage.net
-      - PROXIED=true
-    networks:
-      - cabbage-net
-```
-### 3.8 OpenClaw
-Runs OpenClaw on your private data
-```yaml
-version: '3.8'
-
-services:
-  openclaw:
-    image: ghcr.io/openclaw/openclaw:latest
-    container_name: openclaw-app
-    restart: always
-    network_mode: "host"
-    environment:
-      - NODE_ENV=production
-      - DATABASE_URL=postgresql://claw_user:claw_password@127.0.0.1:5432/openclaw
-      # Wir nutzen hier die lokale IP statt der Domain
-      - BACKEND_URL=http://192.168.68.62:3005 
-    volumes:
-      - /sharedfolders/AppData/openclaw/config:/home/node/.openclaw
-
-  # Das Socat-Relay macht die App im LAN/WLAN unter Port 3005 sichtbar
-  relay:
-    image: alpine/socat
-    container_name: openclaw-relay
-    restart: always
-    network_mode: "host"
-    # Lauscht auf ALLEN lokalen Schnittstellen am Port 3005
-    command: tcp-listen:3005,fork,reuseaddr tcp-connect:127.0.0.1:18789
-    depends_on:
-      - openclaw
-
-  db:
-    image: postgres:15-alpine
-    container_name: openclaw-db
-    restart: always
-    ports:
-      - "5432:5432"
-    environment:
-      - POSTGRES_USER=claw_user
-      - POSTGRES_PASSWORD=claw_password
-      - POSTGRES_DB=openclaw
-    volumes:
-      - /sharedfolders/AppData/openclaw/db:/var/lib/postgresql/data
 ---
 ```
 ## 🌐 Chapter 4: Domain & Networking Setup
